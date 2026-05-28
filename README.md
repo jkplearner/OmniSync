@@ -93,20 +93,27 @@ mule-artifact.json      # Mule app metadata config
 ---
 
 ## 👥 Contributions
-The project is co-developed by **[jkplearner](https://github.com/jkplearner)** and **[bhuvansai-16](https://github.com/bhuvansai-16)** as a joint integration project.
+
+The project is collaboratively developed by **[jkplearner](https://github.com/jkplearner)**, **[bhuvansai-16](https://github.com/bhuvansai-16)**, and **[varikuntlasaimanoj](https://github.com/varikuntlasaimanoj)** as a Salesforce–MuleSoft integration project focused on customer synchronization, inventory validation, and transactional order processing.
 
 ### 👤 [jkplearner](https://github.com/jkplearner)
-* **Customer & Contact Synchronization**: Implemented the customer lookup and creation logic to sync webstore customer details with Salesforce Contacts.
-* **Order Item Validation**: Engineered the validation flow that loops through ordered items to verify their existence in the Salesforce inventory.
-* **Salesforce Database Configuration**: Created custom Salesforce SObjects (`Product__c`, `Order2__c`, and `Order_Item2__c`) and mapped their fields and lookup relationships.
+
+* **Customer & Contact Synchronization**: Implemented customer lookup, duplicate prevention, and Salesforce Contact creation workflows.
+* **Inventory Validation Flow**: Built the validation loop for verifying ordered products against Salesforce inventory records before order processing.
+* **Salesforce Schema Design**: Created and configured custom Salesforce SObjects (`Product__c`, `Order2__c`, and `Order_Item2__c`) along with lookup relationships and field mappings.
 
 ### 👤 [bhuvansai-16](https://github.com/bhuvansai-16)
-* **Product Synchronization**: Developed the standalone `/sync/product` flow to insert new catalog items into Salesforce while avoiding duplicate entries.
-* **Order Creation Logic**: Built the aggregation logic to calculate order totals and mapped relational inserts for parent Orders and child Order Items.
-* **DataWeave Processing**: Wrote DataWeave expressions for transforming payloads, extracting name fields, and performing functional calculations.
-* **Error Handling & Gateway Config**: Configured the HTTP listener routing and built error propagation routes to return standard error response payloads.
 
----
+* **Product Synchronization API**: Developed the `/sync/product` integration flow for inventory synchronization and duplicate product prevention.
+* **Order Processing Engine**: Implemented order total calculation, Order creation, and relational Order Item creation workflows.
+* **DataWeave Transformations & Error Handling**: Wrote DataWeave mappings for payload transformation and configured application-level error handling and HTTP routing.
+
+### 👤 [varikuntlasaimanoj](https://github.com/varikuntlasaimanoj)
+
+* **API Testing & Validation**: Designed and executed Postman-based integration test scenarios covering successful transactions, duplicate validation, and invalid inventory cases.
+* **Project Documentation & Flow Monitoring**: Prepared execution walkthroughs, screenshot documentation, and monitored Mule flow execution through standardized logging.
+* **Deployment & Repository Management**: Assisted in project packaging, GitHub repository organization, runtime configuration, and deployment preparation.
+
 
 ## 🔌 API Endpoints & Specification
 
