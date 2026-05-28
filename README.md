@@ -93,18 +93,18 @@ mule-artifact.json      # Mule app metadata config
 ---
 
 ## 👥 Contributions
-The project is co-developed by **jkplearner** and **bhuvansai-16** as a joint integration project.
+The project is co-developed by **[jkplearner](https://github.com/jkplearner)** and **[bhuvansai-16](https://github.com/bhuvansai-16)** as a joint integration project.
 
-### 👤 jkplearner
-*   **Customer & Contact Synchronization**: Implemented the customer lookup and creation logic to sync webstore customer details with Salesforce Contacts.
-*   **Order Item Validation**: Engineered the validation flow that loops through ordered items to verify their existence in the Salesforce inventory.
-*   **Salesforce Database Configuration**: Created custom Salesforce SObjects (`Product__c`, `Order2__c`, and `Order_Item2__c`) and mapped their fields and lookup relationships.
+### 👤 [jkplearner](https://github.com/jkplearner)
+* **Customer & Contact Synchronization**: Implemented the customer lookup and creation logic to sync webstore customer details with Salesforce Contacts.
+* **Order Item Validation**: Engineered the validation flow that loops through ordered items to verify their existence in the Salesforce inventory.
+* **Salesforce Database Configuration**: Created custom Salesforce SObjects (`Product__c`, `Order2__c`, and `Order_Item2__c`) and mapped their fields and lookup relationships.
 
-### 👤 bhuvansai-16
-*   **Product Synchronization**: Developed the standalone `/sync/product` flow to insert new catalog items into Salesforce while avoiding duplicate entries.
-*   **Order Creation Logic**: Built the aggregation logic to calculate order totals and mapped relational inserts for parent Orders and child Order Items.
-*   **DataWeave Processing**: Wrote DataWeave expressions for transforming payloads, extracting name fields, and performing functional calculations.
-*   **Error Handling & Gateway Config**: Configured the HTTP listener routing and built error propagation routes to return standard error response payloads.
+### 👤 [bhuvansai-16](https://github.com/bhuvansai-16)
+* **Product Synchronization**: Developed the standalone `/sync/product` flow to insert new catalog items into Salesforce while avoiding duplicate entries.
+* **Order Creation Logic**: Built the aggregation logic to calculate order totals and mapped relational inserts for parent Orders and child Order Items.
+* **DataWeave Processing**: Wrote DataWeave expressions for transforming payloads, extracting name fields, and performing functional calculations.
+* **Error Handling & Gateway Config**: Configured the HTTP listener routing and built error propagation routes to return standard error response payloads.
 
 ---
 
