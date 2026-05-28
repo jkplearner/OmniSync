@@ -28,8 +28,8 @@ http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mu
 		name="Salesforce_Config"
 		doc:name="Salesforce Config">
 		<salesforce:basic-connection
-			username="jkpm4321454@agentforce.com"
-			password="JKPM@2005"
+			username="YOUR_SALESFORCE_USERNAME"
+			password="YOUR_SALESFORCE_PASSWORD"
 			securityToken="OneQbzxTYquEcp3OUcTsHB7v"
 			url="https://login.salesforce.com/services/Soap/u/58.0" />
 	</salesforce:sfdc-config>
