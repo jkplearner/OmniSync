@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+
+	<!-- PRODUCT FLOW -->
+	<flow name="product-sync-apiFlow">
+
+		<!-- LISTENER -->
+		<http:listener
+			doc:name="Product Listener"
+			config-ref="HTTP_Listener_config"
+			path="/sync/product" />
+
+		<!-- LOGGER -->
+		<logger
+			level="INFO"
+			doc:name="Incoming Product Logger"
+			message="Received Product Payload: #[payload]" />
+
+		<!-- TRANSFORM -->
+		<ee:transform doc:name="Transform Product Payload">
+			<ee:message>
+				<ee:set-payload><![CDATA[
+%dw 2.0
+output application/java
+---
+{
+    External_Product_ID__c: payload.product.productCode,
+    Product_Name__c: payload.product.name,
+    Category__c: payload.product.category,
+    Price__c: payload.product.price,
+    Stock_Quantity__c: payload.product.stockQuantity,
+    Product_Status__c: payload.product.status,
+    Product_Description__c: payload.product.description,
+    Source_System__c: payload.sourceSystem,
+    Product_Active__c: true
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+		<!-- STORE PRODUCT -->
+		<set-variable
+			variableName="productData"
+			value="#[payload]"
+			doc:name="Store Product Data" />
+
+		<!-- STORE PRODUCT CODE FOR QUERY -->
+		<set-variable
+			variableName="productCode"
+			value="#[vars.productData.External_Product_ID__c]"
+			doc:name="Store Product Code" />
+
+		<!-- QUERY EXISTING PRODUCT -->
+		<salesforce:query
+			doc:name="Query Existing Product"
+			config-ref="Salesforce_Config">
+			<salesforce:salesforce-query><![CDATA[
+SELECT Id, Product_Name__c, External_Product_ID__c
+FROM Product__c
+WHERE External_Product_ID__c = ':productCode'
+]]></salesforce:salesforce-query>
+			<salesforce:parameters><![CDATA[
+#[{
+    productCode: vars.productCode
+}]
+]]></salesforce:parameters>
+		</salesforce:query>
+
+		<!-- LOGGER -->
+		<logger
+			level="INFO"
+			doc:name="Query Result Logger"
+			message="Done successfully" />
+
+		<!-- CHOICE -->
+		<choice doc:name="Product Exists Choice">
+
+			<!-- PRODUCT EXISTS -->
+			<when expression="#[!isEmpty(payload)]">
+
+				<logger
+					level="INFO"
+					doc:name="Existing Product Logger"
+					message="Product already exists: #[payload[0].Id]" />
+
+				<ee:transform doc:name="Existing Product Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    status: "Product Already Exists",
+    existingProduct: payload[0],
+    success: false
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+
+			</when>
+
+			<!-- CREATE PRODUCT -->
+			<otherwise>
+
+				<!-- BUILD ARRAY -->
+				<ee:transform doc:name="Build Product Create Payload">
+					<ee:message>
+						<ee:set-payload><![CDATA[
+%dw 2.0
+output application/java
+---
+[
+    vars.productData
+]
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+
+				<!-- LOGGER -->
+				<logger
+					level="INFO"
+					doc:name="Create Product Logger"
+					message="#[payload]" />
+
+				<!-- CREATE PRODUCT -->
+				<salesforce:create
+					doc:name="Create Product"
+					config-ref="Salesforce_Config"
+					type="Product__c">
+					<salesforce:records><![CDATA[
+#[payload]
+]]></salesforce:records>
+				</salesforce:create>
+
+				<!-- SUCCESS RESPONSE -->
+				<ee:transform doc:name="Product Success Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    status: "Product Created Successfully",
+    productId: payload.items[0].id,
+    success: payload.successful
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+
+			</otherwise>
+
+		</choice>
+
+	</flow>
+
+</mule>

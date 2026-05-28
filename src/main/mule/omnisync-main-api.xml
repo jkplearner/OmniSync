@@ -1,0 +1,527 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+
+
+	<!-- HTTP LISTENER CONFIG -->
+	<http:listener-config
+		name="HTTP_Listener_config"
+		doc:name="HTTP Listener config">
+		<http:listener-connection
+			host="0.0.0.0"
+			port="8081" />
+	</http:listener-config>
+
+
+	<!-- SALESFORCE CONFIG -->
+	<salesforce:sfdc-config
+		name="Salesforce_Config"
+		doc:name="Salesforce Config">
+		<salesforce:basic-connection
+			username="jkpm4321454@agentforce.com"
+			password="JKPM@2005"
+			securityToken="OneQbzxTYquEcp3OUcTsHB7v"
+			url="https://login.salesforce.com/services/Soap/u/58.0" />
+	</salesforce:sfdc-config>
+
+
+	<!-- MAIN FLOW -->
+	<flow name="omnisync-main-apiFlow">
+
+		<!-- LISTENER -->
+		<http:listener
+			doc:name="Listener"
+			config-ref="HTTP_Listener_config"
+			path="/sync/customer" />
+
+		<!-- LOGGER -->
+		<logger
+			level="INFO"
+			doc:name="Incoming Request Logger"
+			message='"Received Customer Payload"' />
+
+
+		<!-- ================================ -->
+		<!-- PHASE 1: STORE RAW DATA          -->
+		<!-- ================================ -->
+
+		<!-- Store Raw Customer -->
+		<set-variable
+			variableName="rawCustomer"
+			value="#[payload.customer]"
+			doc:name="Store Raw Customer" />
+
+		<!-- Store Raw Products -->
+		<set-variable
+			variableName="rawProducts"
+			value="#[payload.products]"
+			doc:name="Store Raw Products" />
+
+		<!-- NEW: Store Raw Order -->
+		<set-variable
+			variableName="rawOrder"
+			value="#[payload.order]"
+			doc:name="Store Raw Order" />
+
+		<!-- NEW: Store Source System -->
+		<set-variable
+			variableName="sourceSystem"
+			value="#[payload.sourceSystem]"
+			doc:name="Store Source System" />
+
+
+		<!-- ================================ -->
+		<!-- PHASE 2: TRANSFORM INPUT         -->
+		<!-- ================================ -->
+
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[
+%dw 2.0
+output application/java
+
+var customer = vars.rawCustomer
+var products  = vars.rawProducts
+
+var splitName = customer.fullName splitBy " "
+
+---
+{
+    customer: {
+        FirstName: splitName[0],
+        LastName:  splitName[1] default "Customer",
+        Email:     customer.email,
+        Phone:     customer.phone
+    },
+
+    products: products map (product) -> {
+        Product_Code__c: product.productCode,
+        Quantity__c:     product.quantity default 1
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+		<!-- Store Transformed Customer -->
+		<set-variable
+			variableName="customerData"
+			value="#[payload.customer]"
+			doc:name="Store Transformed Customer" />
+
+		<!-- Store Transformed Products -->
+		<set-variable
+			variableName="productData"
+			value="#[payload.products]"
+			doc:name="Store Transformed Products" />
+
+
+		<!-- ================================ -->
+		<!-- PHASE 3: CUSTOMER UPSERT         -->
+		<!-- ================================ -->
+
+		<!-- Query Existing Contact -->
+		<salesforce:query
+			doc:name="Query Existing Contact"
+			config-ref="Salesforce_Config">
+			<salesforce:salesforce-query><![CDATA[
+SELECT Id, FirstName, LastName, Email
+FROM Contact
+WHERE Email = ':email'
+]]></salesforce:salesforce-query>
+			<salesforce:parameters><![CDATA[#[output application/java
+---
+{
+    email: vars.customerData.Email
+}]]]></salesforce:parameters>
+		</salesforce:query>
+
+		<!-- Customer Exists Choice -->
+		<choice doc:name="Customer Exists Choice">
+
+			<!-- EXISTING CUSTOMER -->
+			<when expression="#[!isEmpty(payload)]">
+				<logger
+					level="INFO"
+					doc:name="Existing Customer Logger"
+					message='"Customer already exists. Id"' />
+
+				<set-variable
+	variableName="contactId"
+	value="#[payload[0].Id]"
+	doc:name="Store Existing Contact Id" />
+			</when>
+
+			<!-- NEW CUSTOMER -->
+			<otherwise>
+
+				<ee:transform doc:name="Build Contact Payload">
+					<ee:message>
+						<ee:set-payload><![CDATA[
+%dw 2.0
+output application/java
+---
+[
+    {
+        FirstName: vars.customerData.FirstName,
+        LastName:  vars.customerData.LastName,
+        Email:     vars.customerData.Email,
+        Phone:     vars.customerData.Phone
+    }
+]
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+
+				<logger
+					level="INFO"
+					doc:name="Create Contact Logger"
+					message='"Creating new contact"' />
+
+				<salesforce:create
+					doc:name="Create Contact"
+					config-ref="Salesforce_Config"
+					type="Contact">
+					<salesforce:records><![CDATA[#[payload]]]></salesforce:records>
+				</salesforce:create>
+
+				<set-variable
+					variableName="contactId"
+					value="#[payload.items[0].id]"
+					doc:name="Store Created Contact Id" />
+
+				<logger
+					level="INFO"
+					doc:name="Contact Created Logger"
+					message='"New Contact created."' />
+
+			</otherwise>
+
+		</choice>
+
+
+<!-- ================================ -->
+<!-- PHASE 4: PRODUCT VALIDATION      -->
+<!-- ================================ -->
+
+<!-- Initialize validated products accumulator -->
+<set-variable
+	variableName="validatedProducts"
+	value="#[[]]"
+	doc:name="Initialize Validated Products List" />
+
+
+<!-- Validate Each Product -->
+<foreach
+	doc:name="Validate Products"
+	collection="#[vars.productData]">
+
+	<!-- Store current quantity BEFORE query -->
+	<set-variable
+		variableName="currentQuantity"
+		value="#[payload.Quantity__c]"
+		doc:name="Store Current Item Quantity" />
+
+
+	<!-- Store current product code BEFORE query -->
+	<set-variable
+		variableName="currentProductCode"
+		value="#[payload.Product_Code__c]"
+		doc:name="Store Current Product Code" />
+
+
+	<!-- Query Product -->
+	<salesforce:query
+		doc:name="Query Product"
+		config-ref="Salesforce_Config">
+
+		<salesforce:salesforce-query><![CDATA[
+SELECT Id, Product_Name__c, Price__c, External_Product_ID__c
+FROM Product__c
+WHERE External_Product_ID__c = ':productCode'
+]]></salesforce:salesforce-query>
+
+<salesforce:parameters><![CDATA[
+#[
+{
+	productCode: vars.currentProductCode
+}
+]
+]]></salesforce:parameters>
+
+	</salesforce:query>
+
+
+	<!-- Product Exists Choice -->
+	<choice doc:name="Product Exists Choice">
+
+		<!-- PRODUCT NOT FOUND -->
+		<when expression="#[isEmpty(payload)]">
+
+			<logger
+				level="WARN"
+				doc:name="Product Not Found Logger"
+				message="Product not found" />
+
+			<raise-error
+				doc:name="Raise Product Error"
+				type="PRODUCT:NOT_FOUND"
+				description="Product does not exist in inventory" />
+
+		</when>
+
+
+		<!-- PRODUCT FOUND -->
+		<otherwise>
+
+			<logger
+				level="INFO"
+				doc:name="Validated Product Logger"
+				message="Validated Product" />
+
+
+			<!-- Accumulate validated products -->
+			<set-variable
+				variableName="validatedProducts"
+				doc:name="Accumulate Validated Product"
+				value='#[output application/java ---
+vars.validatedProducts ++ [
+	{
+		productId: payload[0].Id,
+		productName: payload[0].Product_Name__c,
+		unitPrice: payload[0].Price__c,
+		quantity: vars.currentQuantity
+	}
+]]' />
+
+		</otherwise>
+
+	</choice>
+
+</foreach>
+		<logger
+			level="INFO"
+			doc:name="All Products Validated Logger"
+			message='"All products validated. Total products"' />
+
+
+		<!-- ================================ -->
+		<!-- PHASE 5: CREATE ORDER            -->
+		<!-- ================================ -->
+
+		<!-- NEW: Calculate Total Amount using actual Salesforce prices -->
+		<set-variable
+			variableName="totalAmount"
+			value="#[vars.validatedProducts reduce ((item, acc = 0.0) -> acc + (item.unitPrice * item.quantity))]"
+			doc:name="Calculate Total Amount" />
+
+		<logger
+			level="INFO"
+			doc:name="Total Amount Logger"
+			message='"Calculated Total Amount"' />
+
+		<!-- NEW: Build Order Payload -->
+		<ee:transform doc:name="Build Order Payload">
+			<ee:message>
+				<ee:set-payload><![CDATA[
+%dw 2.0
+output application/java
+---
+[
+    {
+        Customer__c: vars.contactId,
+        Order_Date__c:     now() as Date,
+        Payment_Status__c: vars.rawOrder.paymentStatus,
+        Source_System__c:  vars.sourceSystem,
+        Total_Amount__c:   vars.totalAmount
+    }
+]
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+		<logger
+			level="INFO"
+			doc:name="Create Order Logger"
+			message='"Creating Order2__c"' />
+
+		<!-- NEW: Create Order2__c -->
+		<salesforce:create
+			doc:name="Create Order"
+			config-ref="Salesforce_Config"
+			type="Order2__c">
+			<salesforce:records><![CDATA[#[payload]]]></salesforce:records>
+		</salesforce:create>
+<set-variable
+	variableName="orderId"
+	value="#[payload.items[0].id]"
+	doc:name="Store Order Id" />
+		<!-- NEW: Store Order Id -->
+<set-variable variableName="finalContactId" value="#[vars.contactId]" doc:name="Preserve Contact Id" />
+<set-variable variableName="finalOrderId" value="#[vars.orderId]" doc:name="Preserve Order Id" />
+
+<set-variable
+	variableName="finalOrderId"
+	value="#[vars.orderId]"
+	doc:name="Preserve Order Id" />
+		<logger
+			level="INFO"
+			doc:name="Order Created Logger"
+			message='"Order2__c created. OrderId"' />
+
+
+		<!-- ================================ -->
+		<!-- PHASE 6: CREATE ORDER ITEMS      -->
+		<!-- ================================ -->
+
+		<!-- NEW: Foreach over validated products to create OrderItem__c -->
+		<foreach
+			doc:name="Create Order Items"
+			collection="#[vars.validatedProducts]">
+
+			<!-- NEW: Build OrderItem Payload -->
+			<ee:transform doc:name="Build OrderItem Payload">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+[
+    {
+        Order__c: vars.orderId,
+        Product__c: payload.productId,
+        Quantity__c: payload.quantity,
+        Unit_Price__c: payload.unitPrice,
+        Source_System__c: vars.sourceSystem,
+        Item_Status__c: "Active"
+    }
+]]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+
+			<logger
+				level="INFO"
+				doc:name="Create OrderItem Logger"
+				message='"Creating OrderItem__c"' />
+
+			<!-- NEW: Create OrderItem__c -->
+			<salesforce:create
+	doc:name="Create Order Item"
+	config-ref="Salesforce_Config"
+	type="Order_Item2__c">
+
+	<salesforce:records><![CDATA[
+#[payload]
+]]></salesforce:records>
+
+</salesforce:create>
+
+			<logger
+				level="INFO"
+				doc:name="OrderItem Created Logger"
+				message='"OrderItem__c created. Id"' />
+
+		</foreach>
+
+		<logger
+			level="INFO"
+			doc:name="All Order Items Created Logger"
+			message='"All OrderItem__c records created successfully for Order"' />
+
+
+		<!-- ================================ -->
+		<!-- PHASE 7: FINAL RESPONSE          -->
+		<!-- ================================ -->
+
+		<!-- NEW: Complete transaction response -->
+		<ee:transform doc:name="Final Transaction Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    status:        "Order Created Successfully",
+    success:       true,
+    contactId:     vars.finalContactId,
+    orderId:       vars.finalOrderId,
+    totalAmount:   vars.totalAmount,
+    sourceSystem:  vars.sourceSystem,
+    itemsOrdered:  sizeOf(vars.validatedProducts),
+    orderItems: vars.validatedProducts map (item) -> {
+        productId:   item.productId,
+        productName: item.productName,
+        quantity:    item.quantity,
+        unitPrice:   item.unitPrice,
+        totalPrice:  item.unitPrice * item.quantity
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+
+		<!-- ================================ -->
+		<!-- ERROR HANDLER                    -->
+		<!-- ================================ -->
+
+		<error-handler>
+
+			<on-error-propagate
+				type="PRODUCT:NOT_FOUND"
+				doc:name="Product Not Found Error Handler">
+				<ee:transform doc:name="Product Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    status:  "Product Not Found",
+    message: "One or more products do not exist in the inventory. Please check product codes.",
+    success: false
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+
+			<on-error-propagate
+				type="ANY"
+				doc:name="General Error Handler">
+				<ee:transform doc:name="General Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    status:  "Internal Server Error",
+    message: error.description,
+    success: false
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+
+		</error-handler>
+
+	</flow>
+
+</mule>
